@@ -52,24 +52,35 @@ test_loader = torch.utils.data.DataLoader(
 
 """ Model """
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout_p):
         super().__init__()
         self.fc1 = nn.Linear(784, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 10)
+        # Weight initialization
+        torch.nn.init.kaiming_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_normal_(self.fc2.weight)
+        torch.nn.init.normal_(self.fc3.weight, mean=0.0, std=1.0)
+        # 드롭아웃 확률
+        self.dropout_p = dropout_p
 
     def forward(self, x):
         x = x.view(-1, 28*28)
         x = F.relu(self.fc1(x))
+        # 드롭아웃 추가
+        x = F.dropout(x, p=self.dropout_p)
         x = F.relu(self.fc2(x))
+        # 드롭아웃 추가
+        x = F.dropout(x, p=self.dropout_p)
         x = self.fc3(x)
         return x
 
 
-model = Net().to(DEVICE)
+model = Net(dropout_p=0.2).to(DEVICE)
 
 """ Optimizer """
-optimizer = optim.SGD(model.parameters(), lr=0.01)
+# Weight_decay : Regularization 추가
+optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-5)
 
 
 """ Loss ftn """
@@ -115,6 +126,8 @@ def evaluate(model, test_loader):
     test_accuracy = correct / len(test_loader.dataset) * 100.
 
     return test_loss, test_accuracy
+
+ 
 
 
 for epoch in range(1, EPOCHS + 1):
