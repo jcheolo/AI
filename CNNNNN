@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+""" Initial CIFAR10 data preparation --------------------------------------------------------------
+# import numpy as np
+# from torchvision import datasets
+# ### First, put .gz file into rawdata_path 
+# rawdata_path = '/user/smartopc/USER/CH/python/Lab/CIFAR10'
+# ### Using torchvision.datasets (download option and train option),
+# ### generate trainset and testset.
+# trainset = datasets.CIFAR10(rawdata_path, train=True, download=True)
+# testset = datasets.CIFAR10(rawdata_path, train=False, download=True)
+# np.save(rawdata_path+'/'+'train_image', trainset.data)
+# np.save(rawdata_path+'/'+'train_label', trainset.targets)
+# np.save(rawdata_path+'/'+'test_image', testset.data)
+# np.save(rawdata_path+'/'+'test_label', testset.targets)
+
+# # label_info=trainset.class_to_idx
+---------------------------------------------------------------------------------------------------
+label_info= 
+{'airplane': 0,
+ 'automobile': 1,
+ 'bird': 2,
+ 'cat': 3,
+ 'deer': 4,
+ 'dog': 5,
+ 'frog': 6,
+ 'horse': 7,
+ 'ship': 8,
+ 'truck': 9}
+----------------------------------------------------------------------------------------------- """
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+from torch.utils.data import Dataset 
+from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
+
+
+# Utilize GPU
+USE_CUDA = torch.cuda.is_available()
+DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
+
+# Randomness control
+torch.manual_seed(1)
+torch.cuda.manual_seed_all(1)
+
+
+
+
+""" Load CIFAR10 dataset """
+data_path = '/user/smartopc/USER/CH/python/Lab/CIFAR10'
+train_image=np.load(data_path+'/'+'train_image.npy')   # 50000,32,32,3
+train_label=np.load(data_path+'/'+'train_label.npy')   # 50000
+test_image=np.load(data_path+'/'+'test_image.npy')     # 10000,32,32,3
+test_label=np.load(data_path+'/'+'test_label.npy')     # 10000
+
+
+torchvision_transform = transforms.Compose([
+    transforms.ToTensor(), # ToTensor() : (H,W,C) -> (C,H,W)
+    transforms.Normalize((0.5, 0.5, 0.5),
+                         (0.5, 0.5, 0.5))
+    ])
+
+
+### Generate dataset
+class Mydata(Dataset):
+    def __init__(self,image,label):
+        self.image_data=image      # 32,32,3
+        self.label_data=label      # 1
+    
+    def __len__(self):           
+        return len(self.image_data)   # 50000 or 10000
+    
+    def __getitem__(self,idx):        
+        x = self.image_data[idx]    # 32,32,3
+        y = self.label_data[idx]    # 1
+        
+        x = torchvision_transform(x)    # 3,32,32
+      
+        return x, y
+
+
+train_set = Mydata(train_image,train_label)   # 50000, ( [3,32,32] , 1 ) 
+test_set = Mydata(test_image,test_label)      # 10000, ( [3,32,32] , 1 )
+
+
+### Generate mini batch
+BATCH_SIZE = 64
+train_loader = torch.utils.data.DataLoader(
+    dataset     = train_set,
+    batch_size  = BATCH_SIZE,
+    shuffle     = True,
+    drop_last = True
+)  
+
+test_loader = torch.utils.data.DataLoader(
+    dataset     = test_set,
+    batch_size  = BATCH_SIZE,
+    shuffle     = True,
+    drop_last = False
+)  
+
+
+
+""" Model """
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.MaxPool2d(2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Dropout2d(p=0.2))
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.MaxPool2d(2),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Dropout2d(p=0.2))
+
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(64*8*8, 10)
+
+    def forward(self, x):
+        x = self.conv2(self.conv1(x))
+        x = self.fc1(self.flatten(x))  # (64,10)
+        
+        return x
+
+
+model = Net().to(DEVICE)
+
+from torchinfo import summary
+summary(model,(64,3,32,32),col_names=('input_size','output_size','kernel_size','num_params') )
+
+""" Optimizer """
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.5)
+
+""" Loss ftn """
+Loss_ftn = torch.nn.CrossEntropyLoss(reduction='sum')
+
+
+
+""" Training """
+### For 1 epoch ###
+def train(model, train_loader, optimizer):
+    model.train()
+    for sample in train_loader:
+        image, label = sample
+        image, label = image.to(DEVICE), label.to(DEVICE)
+
+        optimizer.zero_grad()
+
+        score = model(image)
+        loss = Loss_ftn(score, label)/len(image)
+        
+        loss.backward()
+        optimizer.step()
+        
+    lr=optimizer.param_groups[0]['lr']
+    scheduler.step()
+    
+    return lr
+
+
+""" Test """
+### For 1 epoch ###
+def evaluate(model, test_loader):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for image, label in test_loader:
+                    
+            image, label = image.to(DEVICE), label.to(DEVICE)
+
+            score = model(image)
+            test_loss += Loss_ftn(score, label)
+
+            pred = torch.argmax(score,1)
+            correct += pred.eq(label.view_as(pred)).sum()
+
+    test_loss = test_loss / len(test_loader.dataset)
+    test_accuracy = correct / len(test_loader.dataset) * 100.
+    
+    return test_loss, test_accuracy
+
+
+""" Modelling """
+EPOCHS = 10
+for epoch in range(1, EPOCHS + 1):
+    lr = train(model, train_loader, optimizer)
+    test_loss, test_accuracy = evaluate(model, test_loader)
+    
+    print('[{}] Test Loss: {:.4f}, Accuracy: {:.2f}%, lr: {:.1E}'.format(
+          epoch, test_loss, test_accuracy, lr))
