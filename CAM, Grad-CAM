@@ -1,0 +1,6 @@
+★ CAM, Grad-CAM 설명 (Classification 문제에서, 인풋의 어느부분을 보고 labeling을 했는지 visualize해줌)
+(각 image마다 서로다른 map을 얻게됨)
+(따라서 만들어진 모델의 filter를 visualize하는 것과는 다르다.)
+<참고>
+https://tyami.github.io/deep%20learning/CNN-visualization-Grad-CAM/
+https://hygradcam.blogspot.com/2020/11/blog-post.html
