@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from ssim import SSIM
-from gradient.modules import GradientCorrelationLoss2d
+# from gradient.modules import GradientCorrelationLoss2d
 
 
 
@@ -119,26 +119,26 @@ sigma_y = 1  # Gaussian y 축 표준편차
 gaussian_image = create_gaussian_image(width, height, mu_x, mu_y, sigma_x, sigma_y)
 
 bdataList = []
-n = 50
+n = 40
 realB = torch.zeros(n, 1, 64, 64)
 mean_shiftX = 0
 mean_shiftY = 0
 
-for i in range(n):
-    box, shiftX, shiftY = create_random_box_image(64,64,40,20,32,32)
-    box = convolution_2d_with_padding(box, gaussian_image, 5)
-    realB[i,0,:,:]= torch.Tensor(box)
-    mean_shiftX += shiftX
-    mean_shiftY += -shiftY
-    
-# shiftXList = [-3,3,-3,3]*5
-# shiftYList = [0,0,0,0]*5
 # for i in range(n):
-#     box, shiftX, shiftY = create_shift_box_image(64,64,40,20,32,32,shiftXList[i],shiftYList[i])
+#     box, shiftX, shiftY = create_random_box_image(64,64,40,20,32,32)
 #     box = convolution_2d_with_padding(box, gaussian_image, 5)
 #     realB[i,0,:,:]= torch.Tensor(box)
 #     mean_shiftX += shiftX
-#     mean_shiftY += shiftY
+#     mean_shiftY += -shiftY
+    
+shiftXList = [-3,3,-3,3]*10
+shiftYList = [0,0,0,0]*10
+for i in range(n):
+    box, shiftX, shiftY = create_shift_box_image(64,64,40,20,32,32,shiftXList[i],shiftYList[i])
+    box = convolution_2d_with_padding(box, gaussian_image, 5)
+    realB[i,0,:,:]= torch.Tensor(box)
+    mean_shiftX += shiftX
+    mean_shiftY += shiftY
     
 mean_shiftX = mean_shiftX/n
 mean_shiftY = mean_shiftY/n
@@ -152,7 +152,8 @@ plt.imshow((realB.sum(dim=0))[0])
 L2 = nn.MSELoss()  # 평균 제곱 오차 손실 함수
 L1 = nn.L1Loss()
 FFT = FFTLoss()
-GL = GradientCorrelationLoss2d()
+
+# GL = GradientCorrelationLoss2d()
 a = nn.L1Loss(reduction='none')
 ssim = SSIM(return_msssim=False, L=1, padding=0, ensemble_kernel=False, window_size=7, sigma=1, return_log=False)
 
@@ -175,7 +176,7 @@ for x in shift:
             sameB[i,0,:,:]= torch.Tensor(box)
                
         ### Loss
-        loss = L1(realB,sameB)*0 + L2(realB,sameB)*1 + (1-ssim(realB,sameB))*0
+        loss = L1(realB,sameB)*0 + L2(realB,sameB)*0 + (1-ssim(realB,sameB))*0
         
         Loss_shift[shift_range-y,shift_range+x] = loss
 
@@ -220,64 +221,58 @@ plt.ylabel('Y-shift')
 
 
 
+### For box size
 
+box1 = create_box_image(64,64,40,20,32-5,32)
+box2 = create_box_image(64,64,40,20,32+5,32)
 
+bdata1 = convolution_2d_with_padding(box1, gaussian_image, 5)
+bdata2 = convolution_2d_with_padding(box2, gaussian_image, 5)
 
-# ### For box size
-# Loss_size = []
-# temp = []
-# size = list(np.arange(-14,14+1,2))
+b1 = torch.zeros(1, 1, 64, 64)
+b1[0,0,:,:]= torch.Tensor(bdata1)
+b2 = torch.zeros(1, 1, 64, 64)
+b2[0,0,:,:]= torch.Tensor(bdata2)
 
-# for i in size:
-#     box = create_box_image(64,64,40+i,20,32,32)
-#     bdata = convolution_2d_with_padding(box, gaussian_image, 5)
-#     b = torch.zeros(1, 1, 64, 64)
-#     b[0,0,:,:]= torch.Tensor(bdata)
+Loss_size = []
+temp = []
+size = list(np.arange(-14,14+1,2))
 
-#     eps = 1e-4
-#     buffer = 0.01 #or 0.1
-#     B=b+eps
-#     B1=b1+eps
+for i in size:
+    box = create_box_image(64,64,40+i,20,32,32)
+    bdata = convolution_2d_with_padding(box, gaussian_image, 5)
+    b = torch.zeros(1, 1, 64, 64)
+    b[0,0,:,:]= torch.Tensor(bdata)
+
+    # eps = 1e-4
+    # buffer = 0.01 #or 0.1
+    # B=b+eps
+    # B1=b1+eps
     
-#     #loss1 = L1(b,b1)*0 + L2(b,b1)*0+ (1-ssim(b,b1))*1 + abs((b-b1).mean())*0
-#     # loss2 = L1(b,b2)*0 + L2(b,b2)*10 + (1-ssim(b,b2))*0 + abs((b-b2).mean())*0
+    loss1 = L1(b,b1)*0 + L2(b,b1)*0+ (1-ssim(b,b1))*1 + abs((b-b1).mean())*0
+    # loss2 = L1(b,b2)*0 + L2(b,b2)*10 + (1-ssim(b,b2))*0 + abs((b-b2).mean())*0
     
-#     #loss1 = ( ((b+b1+0.1)/(2*torch.sqrt(b*b1)+0.1) - 1) ).mean()
+    #loss1 = ( ((b+b1+0.1)/(2*torch.sqrt(b*b1)+0.1) - 1) ).mean()
     
-#     #loss1 = ( torch.log((b+b1+0.0001)/(2*torch.sqrt(b*b1)+0.0001)) ).mean()
+    #loss1 = ( torch.log((b+b1+0.0001)/(2*torch.sqrt(b*b1)+0.0001)) ).mean()
     
-#     #loss1 = ( ((B+B1+0)/(2*torch.sqrt(B*B1)+0) - 1) * (torch.min(B,B1)+0.1) ).mean()
-#     loss1 = ( ((B+B1+buffer)/(2*torch.sqrt(B*B1)+buffer) - 1) ).mean()
-#     #loss1 = ( torch.log(((B+B1+0.01)/(2*torch.sqrt(B*B1)+0.01))) ).mean()
+    #loss1 = ( ((B+B1+0)/(2*torch.sqrt(B*B1)+0) - 1) * (torch.min(B,B1)+0.1) ).mean()
+    # loss1 = ( ((B+B1+buffer)/(2*torch.sqrt(B*B1)+buffer) - 1) ).mean()
+    #loss1 = ( torch.log(((B+B1+0.01)/(2*torch.sqrt(B*B1)+0.01))) ).mean()
     
-#     # loss1 = ((2*(B*B+B1*B1))/((B+B1)*(B+B1)) -1 ).mean()
+    # loss1 = ((2*(B*B+B1*B1))/((B+B1)*(B+B1)) -1 ).mean()
     
-#     loss = loss1 #+loss2
-#     #loss = FFT(b,b1)+FFT(b,b2)
-#     Loss_size.append(loss)
+    loss = loss1 #+loss2
+    #loss = FFT(b,b1)+FFT(b,b2)
+    Loss_size.append(loss.item())
     
-#     c = a(b,b1).flatten()
-#     temp.append(c)
-
-# # B = np.arange(0.0001,1,0.0001)
-# # B1 = np.arange(0.0001,1,0.0001)
-# # B, B1 = np.meshgrid(B, B1)
-# # losss = ( ((B+B1+0.1)/(2*np.sqrt(B*B1)+0.1) - 1) )
-
-# # plt.figure()
-# # sns.scatterplot(x=size, y=Loss_size)
-# # plt.gca().invert_yaxis()
-# # plt.grid()
+    c = a(b,b1).flatten()
+    temp.append(c)
 
 
-    
-# # plt.figure()
-# # sns.scatterplot(x=size, y=Loss_shift)
-
-
-
-
-
+plt.figure()
+sns.scatterplot(x=size, y=Loss_size)
+plt.gca().invert_yaxis()
 # plt.figure(figsize=(8, 4))  # 전체 그림 크기 설정 (가로 12, 세로 4)
 # plt.subplot(1, 2, 1)  # 1행 3열의 그리드에서 첫 번째 서브플롯
 # sns.scatterplot(x=size, y=Loss_size)
