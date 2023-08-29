@@ -46,6 +46,19 @@ def create_box_image(imagex, imagey, width, height, cenx, ceny):
     I[sy:ey,sx:ex]=1
     return I
 
+def create_shift_box_image(imagex, imagey, width, height, cenx, ceny, shiftx,shifty):
+    I = np.zeros([imagey, imagex])
+    sx = int(cenx-width/2)
+    ex = int(sx+width)
+    sy = int(ceny-height/2)
+    ey = int(sy+height)
+    I[sy:ey,sx:ex]=1
+    
+    shiftX = np.random.randint(shiftx, shiftx+1)
+    shiftY = np.random.randint(shifty, shifty+1)
+    I =np.roll(I, (shiftX, shiftY), axis=(1, 0))
+    return I, float(shiftX), float(shiftY)
+
 def create_random_box_image(imagex, imagey, width, height, cenx, ceny):
     I = np.zeros([imagey, imagex])
     sx = int(cenx-width/2)
@@ -106,7 +119,7 @@ sigma_y = 1  # Gaussian y 축 표준편차
 gaussian_image = create_gaussian_image(width, height, mu_x, mu_y, sigma_x, sigma_y)
 
 bdataList = []
-n = 50
+n = 20
 realB = torch.zeros(n, 1, 64, 64)
 mean_shiftX = 0
 mean_shiftY = 0
@@ -117,6 +130,15 @@ for i in range(n):
     realB[i,0,:,:]= torch.Tensor(box)
     mean_shiftX += shiftX
     mean_shiftY += shiftY
+    
+# shiftXList = [-1,1,-2,2]*5
+# shiftYList = [0,0,0,0]*5
+# for i in range(n):
+#     box, shiftX, shiftY = create_shift_box_image(64,64,40,20,32,32,shiftXList[i],shiftYList[i])
+#     box = convolution_2d_with_padding(box, gaussian_image, 5)
+#     realB[i,0,:,:]= torch.Tensor(box)
+#     mean_shiftX += shiftX
+#     mean_shiftY += shiftY
     
 mean_shiftX = mean_shiftX/n
 mean_shiftY = mean_shiftY/n
@@ -132,7 +154,7 @@ L1 = nn.L1Loss()
 FFT = FFTLoss()
 GL = GradientCorrelationLoss2d()
 a = nn.L1Loss(reduction='none')
-ssim = SSIM(return_msssim=False, L=1, padding=0, ensemble_kernel=False, window_size=11, sigma=1.5, return_log=False)
+ssim = SSIM(return_msssim=False, L=1, padding=0, ensemble_kernel=False, window_size=7, sigma=1, return_log=False)
 
 # plt.figure()
 # plt.imshow(b1[0,0,:,:])
