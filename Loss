@@ -68,7 +68,7 @@ def create_random_box_image(imagex, imagey, width, height, cenx, ceny):
     I[sy:ey,sx:ex]=1
     
     shift_size_x = 5
-    shift_size_y = 1
+    shift_size_y = 5
     shiftX = np.random.randint(-shift_size_x, shift_size_x+1)
     shiftY = np.random.randint(-shift_size_y, shift_size_y+1)
     I =np.roll(I, (shiftX, shiftY), axis=(1, 0))
@@ -119,7 +119,7 @@ sigma_y = 1  # Gaussian y 축 표준편차
 gaussian_image = create_gaussian_image(width, height, mu_x, mu_y, sigma_x, sigma_y)
 
 bdataList = []
-n = 20
+n = 50
 realB = torch.zeros(n, 1, 64, 64)
 mean_shiftX = 0
 mean_shiftY = 0
@@ -129,9 +129,9 @@ for i in range(n):
     box = convolution_2d_with_padding(box, gaussian_image, 5)
     realB[i,0,:,:]= torch.Tensor(box)
     mean_shiftX += shiftX
-    mean_shiftY += shiftY
+    mean_shiftY += -shiftY
     
-# shiftXList = [-1,1,-2,2]*5
+# shiftXList = [-3,3,-3,3]*5
 # shiftYList = [0,0,0,0]*5
 # for i in range(n):
 #     box, shiftX, shiftY = create_shift_box_image(64,64,40,20,32,32,shiftXList[i],shiftYList[i])
