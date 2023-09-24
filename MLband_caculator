@@ -1,0 +1,224 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Sep 23 00:07:09 2023
+
+@author: JCH
+"""
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.inKernelSize = 5
+        self.downKernelSize = 4
+        
+        self.resKernelSize1 = 5
+        self.resKernelSize2 = 5
+        self.resKernelSize3 = 5
+        self.resKernelSize4 = 5
+        
+        self.resNum1 = 5
+        self.resNum2 = 5
+        self.resNum3 = 5
+        self.resNum4 = 3
+        
+        
+        self.redKernelSize = 5
+        self.upKernelSize = 5
+        self.outKernelSize = 5
+        
+        
+        self.inPadding = int( (self.inKernelSize-1)/2 )
+        self.downPadding = int( (self.downKernelSize-1)/2 )
+        self.resPadding1 = int( (self.resKernelSize1-1)/2 )
+        self.resPadding2 = int( (self.resKernelSize2-1)/2 )
+        self.resPadding3 = int( (self.resKernelSize3-1)/2 )
+        self.resPadding4 = int( (self.resKernelSize4-1)/2 )
+        self.redPadding = int( (self.redKernelSize-1)/2 )
+        self.upPadding = int( (self.upKernelSize-1)/2 )
+        self.outPadding = int( (self.outKernelSize-1)/2 )
+        
+        self.upLayer = torch.nn.Upsample(scale_factor=2, mode='bilinear')
+        
+        self.in_w = torch.ones(1,1,self.inKernelSize,self.inKernelSize)
+        self.down_w = torch.ones(1,1,self.downKernelSize,self.downKernelSize)
+        self.res_w1 = torch.ones(1,1,self.resKernelSize1,self.resKernelSize1)
+        self.res_w2 = torch.ones(1,1,self.resKernelSize2,self.resKernelSize2)
+        self.res_w3 = torch.ones(1,1,self.resKernelSize3,self.resKernelSize3)
+        self.res_w4 = torch.ones(1,1,self.resKernelSize4,self.resKernelSize4)
+        self.red_w = torch.ones(1,1,self.redKernelSize,self.redKernelSize)
+        self.up_w = torch.ones(1,1,self.upKernelSize,self.upKernelSize)
+        self.out_w = torch.ones(1,1,self.outKernelSize,self.outKernelSize)
+            
+
+    def forward(self, x):
+        # inlayer
+        x = F.conv2d(x,self.in_w, stride=(1,1),padding=self.inPadding)
+        x = F.silu(x)
+        # temp = x.detach()        # MLbandperSide = +-inkernelSize//2
+        
+        # downlayer1
+        x = F.conv2d(x,self.down_w, stride=(2,2),padding=self.downPadding)
+        x1 = F.silu(x)
+        # temp = x.detach()    # MlbandperSide = ( MLbandperSide + downKer//2 ) // 2 
+                             ## 즉, 다운을 하면, 기존 MLband에 downKer//2만큼 더한 후, //2를 하면된다.
+                             ## ex, for inker=3, down=4 : MLband= 1/side
+        
+        for i in range(self.resNum1):
+            # res1
+            x_ = x1.detach()
+            x = F.silu(x1)
+            x = F.conv2d(x,self.res_w1, stride=(1,1),padding=self.resPadding1)
+            x = x+x_
+            # temp = x.detach()    # MLband = MLband + (resKerSize//2)
+            x_ = x.detach()
+            x = F.silu(x)
+            x = F.conv2d(x,self.res_w1, stride=(1,1),padding=self.resPadding1)
+            x1 = x+x_
+            # temp = x.detach()    # MLband = MLband + (resKerSize//2)*2
+        # temp = x.detach()   # MLband = MLband + (resKerSize//2)*2*numResLayer
+                            ## i,e) MLband = (inker//2 + downKer//2)//2 + (resKerSize//2)*2*numResLayer
+
+        # downlayer2
+        x = F.conv2d(x1,self.down_w, stride=(2,2),padding=self.downPadding)
+        x2 = F.silu(x)
+        # temp = x.detach()   # MLband = (MLband + downKer//2) // 2
+        for i in range(self.resNum2):
+            # res2-1
+            x_ = x2.detach()
+            x = F.silu(x2)
+            x = F.conv2d(x,self.res_w2, stride=(1,1),padding=self.resPadding2)
+            x = x+x_
+            x_ = x.detach()
+            x = F.silu(x)
+            x = F.conv2d(x,self.res_w2, stride=(1,1),padding=self.resPadding2)
+            x2 = x+x_
+        # temp = x.detach()
+        
+        # downlayer3
+        x = F.conv2d(x2,self.down_w, stride=(2,2),padding=self.downPadding)
+        x3 = F.silu(x)
+        for i in range(self.resNum3):
+            # res3
+            x_ = x3.detach()
+            x = F.silu(x3)
+            x = F.conv2d(x,self.res_w3, stride=(1,1),padding=self.resPadding3)
+            x = x+x_
+            x_ = x.detach()
+            x = F.silu(x)
+            x = F.conv2d(x,self.res_w3, stride=(1,1),padding=self.resPadding3)
+            x3 = x+x_
+        # temp = x.detach()
+            
+        # downlayer4
+        x = F.conv2d(x3,self.down_w, stride=(2,2),padding=self.downPadding)
+        x4 = F.silu(x)
+        # temp = x.detach()
+        for i in range(self.resNum4):
+            # res4
+            x_ = x4.detach()
+            x = F.silu(x4)
+            x = F.conv2d(x,self.res_w4, stride=(1,1),padding=self.resPadding4)
+            x = x+x_
+            x_ = x.detach()
+            x = F.silu(x)
+            x = F.conv2d(x,self.res_w4, stride=(1,1),padding=self.resPadding4)
+            x4 = x+x_
+        # temp = x.detach()
+        
+        # reduce1 + up1
+        x = F.conv2d(x4,self.red_w, stride=(1,1),padding=self.redPadding)
+        x = F.silu(x)
+        # temp = x.detach()
+        x = self.upLayer(x)
+        # temp = x.detach()
+        x = F.conv2d(x,self.up_w, stride=(1,1),padding=self.upPadding)
+        x = F.silu(x)
+        x = x+x3
+        # temp = x.detach()
+        # x = F.conv_transpose2d(x, self.tup_w, stride=2, padding=self.tupPadding) 
+        
+        # reduce2 + up2
+        x = F.conv2d(x,self.red_w, stride=(1,1),padding=self.redPadding)
+        x = F.silu(x)
+        x = self.upLayer(x)
+        # x = F.conv_transpose2d(x, self.tup_w, stride=2, padding=self.tupPadding)
+        x = F.conv2d(x,self.up_w, stride=(1,1),padding=self.upPadding)
+        x = F.silu(x)
+        x = x+x2
+        
+        # reduce3 + up3
+        x = F.conv2d(x,self.red_w, stride=(1,1),padding=self.redPadding)
+        x = F.silu(x)
+        x = self.upLayer(x)
+        # x = F.conv_transpose2d(x, self.tup_w, stride=2, padding=self.tupPadding)
+        x = F.conv2d(x,self.up_w, stride=(1,1),padding=self.upPadding)
+        x = F.silu(x)
+        x = x+x1
+        
+        # up4
+        x = F.conv2d(x,self.red_w, stride=(1,1),padding=self.redPadding)
+        x = F.silu(x)
+        x = self.upLayer(x)
+        # temp = x.detach()
+        # x = F.conv_transpose2d(x, self.tup_w, stride=2, padding=self.tupPadding)
+        x = F.conv2d(x,self.up_w, stride=(1,1),padding=self.upPadding)
+        x = F.silu(x)
+        # temp = x.detach()
+        
+        # outLayer
+        x = F.conv2d(x,self.out_w, stride=(1,1),padding=self.outPadding)
+        temp = x.detach()
+        x = torch.tanh(x) 
+        # temp = x.detach()
+        
+        return x, temp
+
+### UPsampling : 1 -> 4-> 10-> 22 -> 46 : (before mlband/side)*2 + 1 = after mlband/side
+
+model = Net()
+
+bit = 16
+img_size = 2048
+cen = img_size//2+0
+image = torch.empty(1,1,img_size, img_size)
+image[0,0,cen,cen]=0.0000000000000000000000000000001
+
+
+output, temp = model(image)
+
+
+# output = output[0,0,:,:].numpy()
+# indices = np.where(output > 0)
+# mlband= indices[1].max()-cen
+# print(indices[0]-cen)
+# plt.figure()
+# plt.title(f'{mlband}')
+# plt.imshow(output)
+
+temp = temp[0,0,:,:].numpy()
+temp_indices = np.where(temp > 0)
+bandlength = temp_indices[0].max()-temp_indices[0].min() + 1
+mlband = bandlength/2
+print(f'mlband = {mlband}')
+temp_indices = np.where(temp/temp.max() > 1/(2**bit-1))
+effective_bandlength = temp_indices[0].max()-temp_indices[0].min() + 1
+effective_mlband =  effective_bandlength/2
+print(f'effective_mlband = {effective_mlband}')
+plt.figure()
+plt.imshow(temp)
+
+
+
+# tupKernelSize = 5
+# tupPadding = int((tupKernelSize-1)/2)
+# tup_w = torch.ones(1,1,tupKernelSize,tupKernelSize)
+# uptemp = F.conv_transpose2d(temp, tup_w, bias=None, stride=2, padding=tupPadding, output_padding=0, groups=1, dilation=1) 
