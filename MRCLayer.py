@@ -17,6 +17,7 @@ import torchvision
 
 import numpy as np
 import matplotlib.pyplot as plt
+import kornia
 
 from conv2d.conv2d import custom_maxpool2d
 
@@ -94,51 +95,144 @@ gaussian_image = create_gaussian_image(width, height, mu_x, mu_y, sigma_x, sigma
 
 input = create_circle(20, 200)
 input = convolution_2d_with_padding(input, gaussian_image, 5)
-# input1 = create_circle(30, 200)
-# input1 = convolution_2d_with_padding(input1, gaussian_image, 5)
-# input1 = np.roll(input1, (40,0))
-# input = input+input1
-plt.imshow(input)
+input1 = create_circle(20, 200)
+input1 = convolution_2d_with_padding(input1, gaussian_image, 5)
+input1 = np.roll(input1, (22,0))
+input_bridge = input+input1
 
-upsample = 3
+input_pinch = (1-input_bridge).copy()
+input_pinch = np.roll(input_pinch, (-70,0))
+input_pinch[:,75:]=0
+
+input = input_bridge+input_pinch
+# plt.imshow(input)
+
+# gaussian_image = create_gaussian_image(width, height, mu_x, mu_y, sigma_x, sigma_y)
+# input2= create_circle(20, 200)
+# input2 = convolution_2d_with_padding(input2, gaussian_image, 5)
+# input2 = np.roll(input2, (-50,0))
+# input3 = np.roll(input2, (-20,0))
+# input_pinch = np.maximum(input2, input3)
+
+# input = input_bridge+input_pinch
+# plt.imshow(input)
+
+upsample = 1
 mrc_limit = 9
 diameter = int(mrc_limit*upsample)
 kernel_size = diameter if diameter%2==1 else diameter+1
 kernel = torch.tensor(create_circle(diameter))
-# plt.imshow(kernel)
+# plt.figure(), plt.imshow(kernel)
+# upsample = 1
+# mrc_limit = 11
+# diameter = int(mrc_limit*upsample)
+# kernel_size = diameter if diameter%2==1 else diameter+1
+# kernel2 = torch.tensor(create_circle(diameter))
+# X=86
+# Y=109+1
+# input[X:X+1,Y:Y+1] = 1
 
+input= np.where(input<0.01, 0, input)
 input = torch.tensor(input).unsqueeze(0).unsqueeze(0)
-# up_input = torch.nn.functional.upsample(input, scale_factor=upsample, mode='bilinear')
 up_input = torch.nn.functional.interpolate(input, scale_factor=upsample, mode='bilinear')
+up_input = up_input.clone().detach().requires_grad_(True)
+ori = up_input.clone().detach().requires_grad_(False)
 
-# crop_size = (kernel.shape[-1]-1)//2
 padding = int((kernel_size-1)/2)
-# padding = 0
-MRC_layer = custom_maxpool2d(in_channels= 1, kernel = kernel, stride = 1, padding = padding, dilation = 1)
+# MRC_layer = custom_maxpool2d(in_channels= 1, kernel = kernel, stride = 1, padding = padding, dilation = 1)
 
 
-# ### For space
+# # # ### For space
 # over = MRC_layer.get_maxpool(up_input)
 # under = 1-MRC_layer.get_maxpool(1-over)
 
-### For patter_size
-under = 1-MRC_layer.get_maxpool(1-up_input)
-over = MRC_layer.get_maxpool(under)
-
-plt.figure(),
-plt.imshow(up_input.numpy()[0,0,:,:]-over.numpy()[0,0,:,:])
+# # ### For patter_size
+# # # under = 1-MRC_layer.get_maxpool(1-up_input)
+# # # over = MRC_layer.get_maxpool(under)
 
 # plt.figure(),
 # plt.imshow(up_input.numpy()[0,0,:,:]-under.numpy()[0,0,:,:])
 
-
-plt.figure(),
-plt.imshow(up_input.numpy()[0,0,:,:])
-plt.figure(),
-plt.imshow(over.numpy()[0,0,:,:])
-plt.figure(),
-plt.imshow(under.numpy()[0,0,:,:])
+# # plt.figure(),
+# # plt.imshow(up_input.numpy()[0,0,:,:]-under.numpy()[0,0,:,:])
 
 
-        
+# plt.figure(),
+# plt.imshow(up_input.numpy()[0,0,:,:])
+# plt.figure(),
+# plt.imshow(over.numpy()[0,0,:,:])
+# plt.figure(),
+# plt.imshow(under.numpy()[0,0,:,:])
 
+
+L2 = nn.MSELoss(reduction='none')
+avg = torch.nn.MaxPool2d(kernel_size, stride=1, padding=padding)
+optimizer = optim.Adam([up_input] , lr=0.0005)
+epoch = 2000
+
+for i in range(epoch):
+    ##For bridge
+    # over1 = kornia.morphology.dilation(up_input, kernel = kernel)
+    # under1 = kornia.morphology.erosion(over1, kernel = kernel)
+    
+    ## Under_Over : pinch remove
+    over1 = -avg(-up_input)
+    under1 = avg(over1)
+    
+    ## Over_under : bridge remove
+    over2 = avg(up_input)
+    under2 = -avg(-over2)
+    
+    
+    # plt.figure(),
+    # plt.imshow(up_input.numpy()[0,0,:,:])
+    
+    
+    
+    output = under1
+    if i==0:
+        output_1 = output.detach()
+    
+    # diff = L2(up_input, output)
+    diff = L2(under1.detach(), under2)
+    with torch.no_grad():
+        T =diff.sum()
+        print(f'{i}: {T}')
+    
+    # up_input.grad = None
+    optimizer.zero_grad()
+    diff.sum().backward()
+    optimizer.step()
+    
+
+    # torch.no_grad()로 업데이트 수행
+    # with torch.no_grad():
+    #     if i<epoch-1:
+    #         up_input -=  0.01 * up_input.grad 
+    # up_input = up_input.clone().detach().requires_grad_(True)
+
+
+# plt.figure(),
+# plt.imshow(under1.detach().numpy()[0,0,:,:])
+fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(10, 5), sharex=True, sharey=True)
+
+# 4. 원본 A 플롯
+st = 0
+ax1.imshow(ori.detach().numpy()[0,0,:,st:])
+ax1.set_title("Original input")
+# ax1.axis("off")
+
+# 5. A.grad 플롯
+ax2.imshow(up_input.detach().numpy()[0,0,:,st:])
+ax2.set_title("After over_under")
+# ax2.axis("off")
+
+ax3.imshow(diff.detach().numpy()[0,0,:,st:])
+ax3.set_title("Loss")
+
+ax4.imshow(up_input.grad.numpy()[0,0,:,st:])
+ax4.set_title("Gradient of A")
+
+# 6. 플롯 표시
+plt.tight_layout()
+plt.show()
