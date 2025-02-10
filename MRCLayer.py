@@ -19,7 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import kornia
 
-from conv2d.conv2d import custom_maxpool2d
+from conv2d.conv2d import custom_maxpool2d, CustomMaxPool2d
 
 
 def gaussian_2d(x, y, mu_x, mu_y, sigma_x, sigma_y):
@@ -121,7 +121,7 @@ upsample = 1
 mrc_limit = 9
 diameter = int(mrc_limit*upsample)
 kernel_size = diameter if diameter%2==1 else diameter+1
-kernel = torch.tensor(create_circle(diameter))
+kernel = torch.tensor(create_circle(diameter)).type(torch.FloatTensor)
 # plt.figure(), plt.imshow(kernel)
 # upsample = 1
 # mrc_limit = 11
@@ -135,7 +135,7 @@ kernel = torch.tensor(create_circle(diameter))
 input= np.where(input<0.01, 0, input)
 input = torch.tensor(input).unsqueeze(0).unsqueeze(0)
 up_input = torch.nn.functional.interpolate(input, scale_factor=upsample, mode='bilinear')
-up_input = up_input.clone().detach().requires_grad_(True)
+up_input = up_input.type(torch.FloatTensor).clone().detach().requires_grad_(True)
 ori = up_input.clone().detach().requires_grad_(False)
 
 padding = int((kernel_size-1)/2)
@@ -167,34 +167,33 @@ padding = int((kernel_size-1)/2)
 
 L2 = nn.MSELoss(reduction='none')
 avg = torch.nn.MaxPool2d(kernel_size, stride=1, padding=padding)
+# avg = CustomMaxPool2d(kernel_size=(kernel_size, kernel_size), stride=1, padding='same')
 optimizer = optim.Adam([up_input] , lr=0.0005)
-epoch = 2000
+# optimizer = optim.Adam([up_input] , lr=0.01)
+epoch = 3000
 
 for i in range(epoch):
     ##For bridge
     # over1 = kornia.morphology.dilation(up_input, kernel = kernel)
     # under1 = kornia.morphology.erosion(over1, kernel = kernel)
     
-    ## Under_Over : pinch remove
+    
+    ## pinch loss
     over1 = -avg(-up_input)
     under1 = avg(over1)
     
-    ## Over_under : bridge remove
+    ## bridge loss
     over2 = avg(up_input)
     under2 = -avg(-over2)
     
-    
-    # plt.figure(),
-    # plt.imshow(up_input.numpy()[0,0,:,:])
-    
+    ### Prefer generate circle sraf (prefer space)
+    # diff = L2(under1.detach(), under2) #+ L2(up_input, under1)
     
     
-    output = under1
-    if i==0:
-        output_1 = output.detach()
+    ### Prefer generate line sraf (prefer pattern)
+    diff = L2(under1, under2.detach()) + L2(up_input, under2)    
     
-    # diff = L2(up_input, output)
-    diff = L2(under1.detach(), under2)
+    
     with torch.no_grad():
         T =diff.sum()
         print(f'{i}: {T}')
@@ -210,6 +209,7 @@ for i in range(epoch):
     #     if i<epoch-1:
     #         up_input -=  0.01 * up_input.grad 
     # up_input = up_input.clone().detach().requires_grad_(True)
+
 
 
 # plt.figure(),
