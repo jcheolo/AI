@@ -187,11 +187,11 @@ for i in range(epoch):
     under2 = -avg(-over2)
     
     ### Prefer generate circle sraf (prefer space)
-    # diff = L2(under1.detach(), under2) #+ L2(up_input, under1)
+    diff = L2(under1.detach(), under2) + L2(up_input, under1.detach())
     
     
     ### Prefer generate line sraf (prefer pattern)
-    diff = L2(under1, under2.detach()) + L2(up_input, under2)    
+    # diff = L2(under1, under2.detach()) + L2(up_input, under2.detach())    
     
     
     with torch.no_grad():
